@@ -5,8 +5,10 @@ import os
 import xml.etree.ElementTree as ET
 import html
 
-clients = {}
-rooms = {0: {"name": "Party Room", "max": 1000, "pwd": "", "users": {}}}
+clients = {} # "name": username, "id": user_id
+rooms = {0: {"name": "Party Room", "max": 1000, "pwd": "", "users": {}}} 
+# rooms structure: room_id: {"name": str, "max": int, "pwd": str, "users": {}}
+# users structure: user_id: {"name": str, "writer": StreamWriter, "pid": int}
 next_user_id = 1
 
 HOST = "0.0.0.0"
@@ -153,6 +155,8 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                             join_ok_xml += uER_xml
                             join_ok_xml += f'</uLs>'
 
+                            if user_id in rooms[0]["users"]:
+                                del rooms[0]["users"][user_id]
                             await send_message(writer, make_message("joinOK", room_id, join_ok_xml))
 
                 print(f"Sent joinOK for room {room_id} to {username}")
@@ -195,6 +199,9 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 join_ok_xml += f'</u>'
                 join_ok_xml += f'</uLs>'
 
+                if user_id in rooms[0]["users"]:
+                    del rooms[0]["users"][user_id]
+
                 await send_message(writer, make_message("joinOK", new_room_id, join_ok_xml))
                 print(f"Room '{room_name}' created (id={new_room_id}), {username} auto-joined as pid=1")
 
@@ -212,19 +219,43 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                         await send_message(existing_user["writer"], make_message("pubMsg", room_id, msg_xml))
                     elif msg[:2] == ">>" and existing_user_id != user_id:
                         await send_message(existing_user["writer"], make_message("pubMsg", room_id, msg_xml))
-
                     
     except asyncio.IncompleteReadError:
-        print(f"Client disconnected")
-        if writer in clients:
-            print(f"Player {clients[writer]['name']} left")
-            del clients[writer]
+        leaver_user_id = clients[writer]["id"]
+        username = clients[writer]["name"]
+        room_id, room_data = findUserRoom(writer)
+        user_left_xml = f'<user id="{leaver_user_id}"></user>'
+        print(f"Player {username} left")
+        if room_data is not None:
+            for user_id, user in room_data["users"].items():
+                if user_id != leaver_user_id:
+                    print(f'The make_message would be:{make_message("userGone", room_id, user_left_xml)}')
+                    await send_message(user["writer"], make_message("userGone", room_id, user_left_xml))
+            del room_data["users"][leaver_user_id]
+
+        del clients[writer]
+        
     except Exception as e:
         print(f"Error: {e}")
     finally:
         writer.close()
         await writer.wait_closed()
 
+def findUserRoom(writer):
+    for room_id, room_data in rooms.items():
+        for user_id, user in room_data["users"].items():
+            if user["writer"] == writer:
+                return room_id, room_data
+    return None, None
+
+async def debug_state():
+    while True:
+        await asyncio.sleep(5)
+        print(f"\n--- Server State ---")
+        for room_id, room_data in rooms.items():
+            print(f"Room {room_id} '{room_data['name']}': {list(room_data['users'].keys())}")
+        print(f"Clients: {[client['name'] for client in clients.values()]}")
+        print(f"-------------------\n")
 # --------------------- HTTP --------------------- #
 
 class SWFHandler(SimpleHTTPRequestHandler):
@@ -264,16 +295,17 @@ async def handle_policy(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
 async def main():
     sfs_server = await asyncio.start_server(handle_client, HOST, SFS_PORT)
-    #policy_server = await asyncio.start_server(handle_policy, HOST, POLICY_PORT)
+    policy_server = await asyncio.start_server(handle_policy, HOST, POLICY_PORT)
     
     print(f"SFS server listening on {HOST}:{SFS_PORT}")
     print(f"Policy server listening on {HOST}:{POLICY_PORT}")
     
     #async with sfs_server, policy_server:
-    async with sfs_server:
+    async with sfs_server, policy_server:
         await asyncio.gather(
             sfs_server.serve_forever(),
-            #policy_server.serve_forever()
+            policy_server.serve_forever(),
+            debug_state()
         )
 
 if __name__ == "__main__":
