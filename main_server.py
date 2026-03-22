@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 import html
 
 clients = {} # "name": username, "id": user_id
-rooms = {0: {"name": "Party Room", "max": 1000, "pwd": "", "users": {}}} 
+rooms = {0: {"name": "Party Room", "max": 1000, "pwd": "", "users": {}, "inGame": False}} 
 # rooms structure: room_id: {"name": str, "max": int, "pwd": str, "users": {}}
 # users structure: user_id: {"name": str, "writer": StreamWriter, "pid": int}
 next_user_id = 1
@@ -50,7 +50,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         while True:
             data = await reader.readuntil(b"\x00")
             message = data[:-1].decode("utf-8")
-            print(f"Received: {message}")
+            print(f"Received: {html.unescape(message)}")
 
             root = ET.fromstring(message)
             body = root.find("body")
@@ -120,6 +120,9 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                         elif num_players == rooms[room_id]["max"]:
                             lobby_full_xml = f'<error msg="Lobby is full."/>'
                             await send_message(writer, make_message("joinKO", 0, lobby_full_xml))
+                        elif rooms[room_id]["inGame"] == True:
+                            game_started_xml = f'<error msg="Game already in progress. Guess your friends started without you!"/>'
+                            await send_message(writer, make_message("joinKO", 0, game_started_xml))
                         else:
                             userList = ""
                             uER_xml = f'<u i="{user_id}" m="0" s="0" p="{pid}">'
@@ -163,7 +166,8 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     "name": room_name,
                     "max": max_players,
                     "pwd": pwd,
-                    "users": {}
+                    "users": {},
+                    "inGame": False
                 }
 
                 username = clients[writer]["name"]
@@ -209,6 +213,8 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                         await send_message(existing_user["writer"], make_message("pubMsg", room_id, msg_xml))
                     elif msg[:2] == ">>" and existing_user_id != user_id:
                         await send_message(existing_user["writer"], make_message("pubMsg", room_id, msg_xml))
+                if msg[:2] == ">>" and '"iG":true' in msg:
+                    rooms[room_id]["inGame"] = True
                     
     except asyncio.IncompleteReadError:
         leaver_user_id = clients[writer]["id"]
