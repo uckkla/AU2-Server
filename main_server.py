@@ -1,7 +1,5 @@
 import asyncio
-from http.server import HTTPServer, SimpleHTTPRequestHandler
 import threading
-import os
 import xml.etree.ElementTree as ET
 import html
 
@@ -10,14 +8,6 @@ rooms = {0: {"name": "Party Room", "max": 1000, "pwd": "", "users": {}}}
 # rooms structure: room_id: {"name": str, "max": int, "pwd": str, "users": {}}
 # users structure: user_id: {"name": str, "writer": StreamWriter, "pid": int}
 next_user_id = 1
-
-HOST = "0.0.0.0"
-SFS_PORT = 9339
-HTTP_PORT = 8000
-POLICY_PORT = 843
-SWF_DIR = os.path.join(os.path.dirname(__file__), "public")
-
-# --------------------- SFS ------------------- #
 
 # Relevant for send_message
 """
@@ -233,6 +223,10 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     await send_message(user["writer"], make_message("userGone", room_id, user_left_xml))
             del room_data["users"][leaver_user_id]
 
+            if len(room_data["users"]) == 0 and room_id != 0:
+                del rooms[room_id]
+                print(f"Room {room_id} deleted (empty)")
+
         del clients[writer]
         
     except Exception as e:
@@ -256,63 +250,3 @@ async def debug_state():
             print(f"Room {room_id} '{room_data['name']}': {list(room_data['users'].keys())}")
         print(f"Clients: {[client['name'] for client in clients.values()]}")
         print(f"-------------------\n")
-# --------------------- HTTP --------------------- #
-
-class SWFHandler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=SWF_DIR, **kwargs)
-
-    def end_headers(self):
-        # Allow Flash to load files from this server
-        self.send_header("Access-Control-Allow-Origin", "*")
-        super().end_headers()
-
-    def log_message(self, format, *args):
-        print(f"[HTTP] {format % args}")
-
-def start_http_server():
-    server = HTTPServer((HOST, HTTP_PORT), SWFHandler)
-    print(f"HTTP server listening on {HOST}:{HTTP_PORT}")
-    server.serve_forever()
-
-# -------------------- POLICY -------------------- # 
-
-async def handle_policy(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    try:
-        # Flash sends this exact string requesting the policy file
-        await reader.readuntil(b"\x00")
-        print("Policy request received on port 843")
-        policy = '<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="*"/></cross-domain-policy>'
-        writer.write((policy + "\x00").encode("utf-8"))
-        await writer.drain()
-    except Exception as e:
-        print(f"Policy server error: {e}")
-    finally:
-        writer.close()
-        await writer.wait_closed()
-
-# -------------------- MAIN --------------------- #
-
-async def main():
-    sfs_server = await asyncio.start_server(handle_client, HOST, SFS_PORT)
-    policy_server = await asyncio.start_server(handle_policy, HOST, POLICY_PORT)
-    
-    print(f"SFS server listening on {HOST}:{SFS_PORT}")
-    print(f"Policy server listening on {HOST}:{POLICY_PORT}")
-    
-    #async with sfs_server, policy_server:
-    async with sfs_server, policy_server:
-        await asyncio.gather(
-            sfs_server.serve_forever(),
-            policy_server.serve_forever(),
-            debug_state()
-        )
-
-if __name__ == "__main__":
-    http_thread = threading.Thread(target=start_http_server, daemon=True)
-    http_thread.start()
-
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Server stopped.")
