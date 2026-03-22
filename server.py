@@ -3,6 +3,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 import threading
 import os
 import xml.etree.ElementTree as ET
+import html
 
 clients = {}
 rooms = {0: {"name": "Party Room", "max": 1000, "pwd": "", "users": {}}}
@@ -27,8 +28,9 @@ SWF_DIR = os.path.join(os.path.dirname(__file__), "public")
          this.socketConnection.flush();
       }
 """
-def send_message(writer: asyncio.StreamWriter, xml_str: str):
+async def send_message(writer: asyncio.StreamWriter, xml_str: str):
     writer.write((xml_str + "\x00").encode("utf-8"))
+    await writer.drain()
 
 # Relevant for make_message
 """
@@ -63,7 +65,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             action = body.get("action")
 
             if action == "verChk":
-                send_message(writer, make_message("apiOK", 0))
+                await send_message(writer, make_message("apiOK", 0))
                 print("Sent apiOK")
             
             # Received: <msg t='sys'><body action='login' r='0'><login z='AU2'><nick><![CDATA[ExampleUserName]]></nick><pword><![CDATA[]]></pword></login></body></msg>
@@ -76,7 +78,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 clients[writer] = {"name": username, "id": user_id}
                 print(f"Player logged in: {username} id={user_id}")
 
-                send_message(writer, make_message("logOK", 0, f'<login id="{user_id}" mod="0" n="{username}" />'))
+                await send_message(writer, make_message("logOK", 0, f'<login id="{user_id}" mod="0" n="{username}" />'))
                 print(f"Sent logOK to {username}")
             
             # Received: <msg t='sys'><body action='getRmList' r='0'></body></msg>
@@ -90,7 +92,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     room_list_xml += f'<vars></vars>'
                     room_list_xml += f'</rm>'
                 room_list_xml += '</rmList>'
-                send_message(writer, make_message("rmList", 0, room_list_xml))
+                await send_message(writer, make_message("rmList", 0, room_list_xml))
             
             # Received: <msg t='sys'><body action='joinRoom' r='-1'><room id='0' pwd='' spec='0' leave='0' old='-1' /></body></msg>
             elif action == "joinRoom":
@@ -109,23 +111,23 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     join_ok_xml += f'</u>'
                     join_ok_xml += f'</uLs>'
 
-                    send_message(writer, make_message("joinOK", room_id, join_ok_xml))
+                    await send_message(writer, make_message("joinOK", room_id, join_ok_xml))
                 
                 else:
                     pwd = body.find("room").get("pwd")
 
                     if room_id not in rooms:
                         room_doesnt_exist_xml = f'<error msg="Room does not exist."/>'
-                        send_message(writer, make_message("joinKO", 0, room_doesnt_exist_xml))
+                        await send_message(writer, make_message("joinKO", 0, room_doesnt_exist_xml))
                     else:
                         num_players = len(rooms[room_id]["users"])
                         pid = num_players + 1
                         if rooms[room_id]["pwd"] != pwd:
                             wrong_pwd_xml = f'<error msg="Incorrect Password."/>'
-                            send_message(writer, make_message("joinKO", 0, wrong_pwd_xml))
+                            await send_message(writer, make_message("joinKO", 0, wrong_pwd_xml))
                         elif num_players == rooms[room_id]["max"]:
                             lobby_full_xml = f'<error msg="Lobby is full."/>'
-                            send_message(writer, make_message("joinKO", 0, lobby_full_xml))
+                            await send_message(writer, make_message("joinKO", 0, lobby_full_xml))
                         else:
                             userList = ""
                             uER_xml = f'<u i="{user_id}" m="0" s="0" p="{pid}">'
@@ -134,7 +136,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                             uER_xml += f'</u>'
 
                             for existing_user_id, existing_user in rooms[room_id]["users"].items():
-                                send_message(existing_user["writer"], make_message("uER", room_id, uER_xml))
+                                await send_message(existing_user["writer"], make_message("uER", room_id, uER_xml))
 
                                 existing_user_xml = f'<u i="{existing_user_id}" m="0" s="0" p="{existing_user["pid"]}">'
                                 existing_user_xml += f'<n><![CDATA[{existing_user["name"]}]]></n>'
@@ -151,7 +153,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                             join_ok_xml += uER_xml
                             join_ok_xml += f'</uLs>'
 
-                            send_message(writer, make_message("joinOK", room_id, join_ok_xml))
+                            await send_message(writer, make_message("joinOK", room_id, join_ok_xml))
 
                 print(f"Sent joinOK for room {room_id} to {username}")
             
@@ -179,7 +181,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 create_room_xml += f'<vars></vars>'
                 create_room_xml += f'</rm>'
 
-                send_message(writer, make_message("roomAdd", new_room_id, create_room_xml))
+                await send_message(writer, make_message("roomAdd", new_room_id, create_room_xml))
 
                 # Auto-join the creator into their new room as player 1
                 rooms[new_room_id]["users"][user_id] = {"name": username, "writer": writer, "pid": 1}
@@ -193,12 +195,25 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 join_ok_xml += f'</u>'
                 join_ok_xml += f'</uLs>'
 
-                send_message(writer, make_message("joinOK", new_room_id, join_ok_xml))
+                await send_message(writer, make_message("joinOK", new_room_id, join_ok_xml))
                 print(f"Room '{room_name}' created (id={new_room_id}), {username} auto-joined as pid=1")
 
             elif action == "pubMsg":
-                pass
+                user_id = clients[writer]["id"]
+                room_id = int(body.get("r"))
+                msg = html.unescape(body.find("txt").text or "")
 
+                msg_xml = f'<user id="{user_id}"></user>'
+                msg_xml += f'<txt><![CDATA[{msg}]]></txt>'
+
+                for existing_user_id, existing_user in rooms[room_id]["users"].items():
+                    if msg[:2] == "!!":
+                        print(f"Sending !! to user {existing_user_id}")
+                        await send_message(existing_user["writer"], make_message("pubMsg", room_id, msg_xml))
+                    elif msg[:2] == ">>" and existing_user_id != user_id:
+                        await send_message(existing_user["writer"], make_message("pubMsg", room_id, msg_xml))
+
+                    
     except asyncio.IncompleteReadError:
         print(f"Client disconnected")
         if writer in clients:
@@ -249,15 +264,16 @@ async def handle_policy(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
 async def main():
     sfs_server = await asyncio.start_server(handle_client, HOST, SFS_PORT)
-    policy_server = await asyncio.start_server(handle_policy, HOST, POLICY_PORT)
+    #policy_server = await asyncio.start_server(handle_policy, HOST, POLICY_PORT)
     
     print(f"SFS server listening on {HOST}:{SFS_PORT}")
     print(f"Policy server listening on {HOST}:{POLICY_PORT}")
     
-    async with sfs_server, policy_server:
+    #async with sfs_server, policy_server:
+    async with sfs_server:
         await asyncio.gather(
             sfs_server.serve_forever(),
-            policy_server.serve_forever()
+            #policy_server.serve_forever()
         )
 
 if __name__ == "__main__":
