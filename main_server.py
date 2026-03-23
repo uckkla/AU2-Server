@@ -123,6 +123,9 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                         elif rooms[room_id]["inGame"] == True:
                             game_started_xml = f'<error msg="Game already in progress. Guess your friends started without you!"/>'
                             await send_message(writer, make_message("joinKO", 0, game_started_xml))
+                        elif username in [user["name"] for user in rooms[room_id]["users"].values()]:
+                            existing_username_xml = f'<error msg="Another player already has that username in this lobby. How about be unique?"/>'
+                            await send_message(writer, make_message("joinKO", 0, existing_username_xml))
                         else:
                             userList = ""
                             uER_xml = f'<u i="{user_id}" m="0" s="0" p="{pid}">'
