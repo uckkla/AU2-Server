@@ -1,9 +1,9 @@
 import asyncio
 import threading
 import argparse
-from main_server import AU2Server
-from policy_server import handle_policy
-from http_server import start_http_server
+from servers.au2_server import AU2Server
+from servers.policy_server import handle_policy
+from servers.http_server import start_http_server
 
 HOST = "0.0.0.0"
 SFS_PORT = 9339

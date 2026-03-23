@@ -1,7 +1,7 @@
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import os
 
-SWF_DIR = os.path.join(os.path.dirname(__file__), "public")
+SWF_DIR = os.path.join(os.path.dirname(__file__), "..", "public")
 
 class SWFHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -10,6 +10,10 @@ class SWFHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         # Allow Flash to load files from this server
         self.send_header("Access-Control-Allow-Origin", "*")
+        if self.path == "/config.xml":
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
         super().end_headers()
 
     def log_message(self, format, *args):
