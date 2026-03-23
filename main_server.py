@@ -72,6 +72,10 @@ class AU2Server:
                 message = data[:-1].decode("utf-8")
                 print(f"Received: {html.unescape(message)}")
 
+                if message == "<policy-file-request/>":
+                    await self.handle_policy_file(writer)
+                    continue
+
                 root = ET.fromstring(message)
                 body = root.find("body")
                 action = body.get("action")
@@ -249,6 +253,9 @@ class AU2Server:
             self.rooms[room_id]["inGame"] = True
 
     async def handle_disconnect(self, writer):
+        # Policy request as connection is cut short
+        if writer not in self.clients:
+            return
         leaver_user_id = self.clients[writer]["id"]
         username = self.clients[writer]["name"]
         room_id, room_data = self.find_user_room(writer)
@@ -265,6 +272,10 @@ class AU2Server:
                 print(f"Room {room_id} deleted (empty)")
 
         del self.clients[writer]
+
+    async def handle_policy_file(self, writer):
+        policy_xml = '<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="*"/></cross-domain-policy>'
+        await self.send_message(writer, policy_xml)
 
     def find_user_room(self, writer):
         for room_id, room_data in self.rooms.items():
