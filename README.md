@@ -19,12 +19,16 @@ Achievement Unlocked 2 has a co-op multiplayer mode where 2-4 players can work t
 > [!NOTE]
 > Steps 1-3 are required by the host PC. If you are joining the host, skip to step 4.
  
-### 1. Clone the repository
- 
+### 1. Download the server
+
+**Option A: Clone with git** 
 ```bash
 git clone https://github.com/uckkla/Achievement-Unlocked-2-Server.git
 cd Achievement-Unlocked-2-Server
 ```
+
+**Option B: Download the zip**
+If you don't have git installed, download the latest release from the [Releases](https://github.com/uckkla/AU2-Server/releases) page and extract it.
  
 ### 2. Configure the server IP
  
@@ -93,6 +97,17 @@ python main.py --policy-server
 ```
  
 This adds port 843 as a requirement for port forwarding if playing over the internet.
+
+## Troubleshooting
+
+**Flash Projector shows a blank screen**
+- Make sure the server is running and you can see the HTTP and SFS server listening messages.
+- Check that the IP in `config.xml` matches the host machine's actual IP.
+- If connecting over the internet, make sure ports 8000 and 9339 are forwarded. If using policy server, port 843 should also be forwarded.
+
+**Game loads but multiplayer lobby is empty or won't connect**
+- Check that the relevant ports are not being blocked.
+- The IP in the Flash Projector URL and the IP in `config.xml` should both point to the host.
  
 ## How it works
  
