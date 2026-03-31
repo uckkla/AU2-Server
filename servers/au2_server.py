@@ -1,8 +1,10 @@
 import asyncio
 import xml.etree.ElementTree as ET
 import html
+import logging
 
 
+logger = logging.getLogger(__name__)
 
 class AU2Server:
     JOIN_ERRORS = {
@@ -65,12 +67,13 @@ class AU2Server:
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         addr = writer.get_extra_info("peername")
-        print(f"New Connection from {addr}")
+        logger.info(f"New Connection from {addr}")
+
         try:
             while True:
                 data = await reader.readuntil(b"\x00")
                 message = data[:-1].decode("utf-8")
-                print(f"Received: {html.unescape(message)}")
+                logger.debug(f"Received: {html.unescape(message)}")
 
                 if message == "<policy-file-request/>":
                     await self.handle_policy_file(writer)
@@ -82,12 +85,14 @@ class AU2Server:
 
                 if action in self.handlers:
                     await self.handlers[action](writer, body)
-                        
-        except asyncio.IncompleteReadError:
+        
+        # IncompleteReadError - Graceful disconnect (Leaving Lobby/Game) / Bytes no longer sent
+        # ConnectionResetError - Forced disconnect (Closing Flash Projector)
+        except (asyncio.IncompleteReadError, ConnectionResetError):
             await self.handle_disconnect(writer)
             
         except Exception as e:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
         finally:
             writer.close()
             await writer.wait_closed()
@@ -95,7 +100,7 @@ class AU2Server:
     # Received: <msg t='sys'><body action='verChk' r='0'><ver v='161' /></body></msg>
     async def handle_ver_chk(self, writer, body):
         await self.send_message(writer, self.make_message("apiOK", 0))
-        print("Sent apiOK")
+        logger.debug("Sent apiOK")
 
     # Received: <msg t='sys'><body action='login' r='0'><login z='AU2'><nick><![CDATA[ExampleUserName]]></nick><pword><![CDATA[]]></pword></login></body></msg>
     async def handle_login(self, writer, body):
@@ -105,10 +110,10 @@ class AU2Server:
         self.next_user_id += 1
 
         self.clients[writer] = {"name": username, "id": user_id}
-        print(f"Player logged in: {username} id={user_id}")
+        logger.info(f"Player logged in: {username} id={user_id}")
 
         await self.send_message(writer, self.make_message("logOK", 0, f'<login id="{user_id}" mod="0" n="{username}" />'))
-        print(f"Sent logOK to {username}")
+        logger.debug(f"Sent logOK to {username}")
 
     # Received: <msg t='sys'><body action='getRmList' r='0'></body></msg>
     async def handle_get_rm_list(self, writer, body):
@@ -187,7 +192,7 @@ class AU2Server:
                         del self.rooms[0]["users"][user_id]
                     await self.send_message(writer, self.make_message("joinOK", room_id, join_ok_xml))
 
-        print(f"Sent joinOK for room {room_id} to {username}")
+        logger.debug(f"Sent joinOK for room {room_id} to {username}")
 
     # Received: <msg t='sys'><body action='createRoom' r='0'><room tmp='1' gam='1' spec='0' exit='1' jas='0'><name><![CDATA[4512-9044-4437-5231]]></name><pwd><![CDATA[]]></pwd><max>4</max><vars></vars></room></body></msg>
     async def handle_create_room(self, writer, body):
@@ -232,7 +237,7 @@ class AU2Server:
             del self.rooms[0]["users"][user_id]
 
         await self.send_message(writer, self.make_message("joinOK", new_room_id, join_ok_xml))
-        print(f"Room '{room_name}' created (id={new_room_id}), {username} auto-joined as pid=1")
+        logger.info(f"Room '{room_name}' created (id={new_room_id}), {username} auto-joined as pid=1")
 
     # Received: <msg t='sys'><body action='pubMsg' r='1'><txt><![CDATA[>>{"ready":false,"iG":false,"cF":1,"done":false,"tint":3184365,"xM":0,"ws":0,"yM":0,"xS":1}]]></txt></body></msg>
     async def handle_pub_msg(self, writer, body):
@@ -245,7 +250,6 @@ class AU2Server:
 
         for existing_user_id, existing_user in self.rooms[room_id]["users"].items():
             if msg[:2] == "!!":
-                print(f"Sending !! to user {existing_user_id}")
                 await self.send_message(existing_user["writer"], self.make_message("pubMsg", room_id, msg_xml))
             elif msg[:2] == ">>" and existing_user_id != user_id:
                 await self.send_message(existing_user["writer"], self.make_message("pubMsg", room_id, msg_xml))
@@ -260,7 +264,7 @@ class AU2Server:
         username = self.clients[writer]["name"]
         room_id, room_data = self.find_user_room(writer)
         user_left_xml = f'<user id="{leaver_user_id}"></user>'
-        print(f"Player {username} left")
+        logger.info(f"Player {username} left")
         if room_data is not None:
             for user_id, user in room_data["users"].items():
                 if user_id != leaver_user_id:
@@ -269,12 +273,12 @@ class AU2Server:
 
             if len(room_data["users"]) == 0 and room_id != 0:
                 del self.rooms[room_id]
-                print(f"Room {room_id} deleted (empty)")
+                logger.info(f"Room {room_id} deleted (empty)")
 
         del self.clients[writer]
 
     async def handle_policy_file(self, writer):
-        policy_xml = '<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="*"/></cross-domain-policy>'
+        policy_xml = '<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="9339"/></cross-domain-policy>'
         await self.send_message(writer, policy_xml)
 
     def find_user_room(self, writer):
@@ -287,8 +291,8 @@ class AU2Server:
     async def debug_state(self):
         while True:
             await asyncio.sleep(5)
-            print(f"\n--- Server State ---")
+
+            logger.debug(f"\n--- Server State ---")
             for room_id, room_data in self.rooms.items():
-                print(f"Room {room_id} '{room_data['name']}': {list(room_data['users'].keys())}")
-            print(f"Clients: {[client['name'] for client in self.clients.values()]}")
-            print(f"-------------------\n")
+                logger.debug(f"Room {room_id} '{room_data['name']}': {list(room_data['users'].keys())}")
+            logger.debug(f"Clients: {[client['name'] for client in self.clients.values()]}")
