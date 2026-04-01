@@ -137,6 +137,7 @@ The original SWF has been modified to:
 - Connect to a configurable server address via `config.xml` instead of the hardcoded Armor Games server IP
 - Remove the domain sitelock
 - Fix in-game chat by correctly initialising the chat UI on multiplayer game start
+- Fix player elephant being invisible when starting a new game after completing a previous one
 - Update the main menu version text
  
  
