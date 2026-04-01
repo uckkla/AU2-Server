@@ -9,9 +9,10 @@ Achievement Unlocked 2 has a co-op multiplayer mode where 2-4 players can work t
  
  
 ## Requirements
- 
+**Host Only**
 - Python 3.10+
-- A copy of the modified `achievement-unlocked-6561.swf` (included, for host only)
+
+**All Players**
 - [Adobe Flash Player Standalone Projector 32](https://fpdownload.macromedia.com/pub/flashplayer/updaters/32/flashplayer_32_sa.exe) — use version 32, the last version without the kill switch.
  
  
