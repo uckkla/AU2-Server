@@ -21,14 +21,19 @@ Achievement Unlocked 2 has a co-op multiplayer mode where 2-4 players can work t
  
 ### 1. Download the server
 
-**Option A: Clone with git** 
+**Option A: Download the zip (Stable Version)**
+If you don't have git installed, download the latest release from the [Releases](https://github.com/uckkla/AU2-Server/releases) page and extract it, then navigate into the extracted folder:
 ```bash
-git clone https://github.com/uckkla/Achievement-Unlocked-2-Server.git
-cd Achievement-Unlocked-2-Server
+cd AU2-Server-v1.0.x
 ```
 
-**Option B: Download the zip**
-If you don't have git installed, download the latest release from the [Releases](https://github.com/uckkla/AU2-Server/releases) page and extract it.
+**Option B: Clone with git** 
+```bash
+git clone https://github.com/uckkla/AU2-Server.git
+cd AU2-Server
+```
+
+
  
 ### 2. Configure the server IP
  
