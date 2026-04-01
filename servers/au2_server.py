@@ -7,12 +7,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 class AU2Server:
+    # Note: Some of these errors are handled by the SWF itself, but good measure in case it is bypassed.
     JOIN_ERRORS = {
         "wrong_password": "<error msg='Incorrect Password.'/>",
         "room_not_found": "<error msg='Room does not exist.'/>",
         "lobby_full": "<error msg='Lobby is full.'/>",
         "game_in_progress": "<error msg='Game already in progress. Guess your friends started without you!'/>",
-        "duplicate_username": "<error msg='Another player already has that username in this lobby. How about be unique?'/>"
+        "duplicate_username": "<error msg='Another player already has that username in this lobby. How about be unique?'/>",
+        "party_room_reserved": "<error msg='You cannot join the Party Room directly."
+    }
+
+    CREATE_ERRORS = {
+        "room_exists": "<room e='Room name already exists.'/>",
     }
 
     def __init__(self):
@@ -136,6 +142,14 @@ class AU2Server:
         
         # Party Room
         if room_id == 0:
+            current_room = int(body.get("r"))
+            # If player has already joined party room and trying to join it again, means they tried to join "Party Room" name.
+            # Messy solution as it doesnt tell the player why they couldnt join, but they are stuck in Party Room otherwise.
+            if current_room == 0:
+                await self.send_join_ko(writer, "party_room_reserved")
+                writer.close()
+                return
+            
             self.rooms[0]["users"][user_id] = {"name": username, "writer": writer}
             join_ok_xml = f'<pid id="-1"/>'
             join_ok_xml += f'<vars></vars>'
@@ -163,6 +177,7 @@ class AU2Server:
                     await self.send_join_ko(writer, "game_in_progress")
                 elif username in [user["name"] for user in self.rooms[room_id]["users"].values()]:
                     await self.send_join_ko(writer, "duplicate_username")
+
                 else:
                     userList = ""
                     uER_xml = f'<u i="{user_id}" m="0" s="0" p="{pid}">'
@@ -200,6 +215,12 @@ class AU2Server:
         room_name = data.find("name").text
         max_players = data.find("max").text
         pwd = data.find("pwd").text or ""
+
+        existing_names = [r["name"] for r in self.rooms.values()]
+        if room_name in existing_names:
+            room_exists_xml = '<room e="Room name already exists."/>'
+            await self.send_message(writer, self.make_message("createRmKO", 0, CREATE_ERRORS["room_exists"]))
+            return
 
         new_room_id = max(self.rooms.keys()) + 1
         self.rooms[new_room_id] = {
