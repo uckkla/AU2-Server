@@ -144,8 +144,10 @@ The original SWF has been modified to:
 - Remove the domain sitelock
 - Fix in-game chat by correctly initialising the chat UI on multiplayer game start
 - Fix player elephant being invisible when starting a new game after completing a previous one
+- Fix stale game state data being sent in the lobby after completing a multiplayer game, which caused other players' elephants to display a default colour in the lobby
+- Allow players to set a custom room code instead of using the randomly generated one
+- Remember the last used player name when opening the room creation or joining screens
 - Update the main menu version text
- 
  
 ## Credits
  
