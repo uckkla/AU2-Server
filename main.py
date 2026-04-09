@@ -19,7 +19,7 @@ args = parser.parse_args()
 os.makedirs("logs", exist_ok=True)
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.FileHandler("logs/server.log"),
